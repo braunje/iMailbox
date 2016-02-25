@@ -2,25 +2,25 @@ package mailbox.ejb;
 
 import javax.ejb.ActivationConfigProperty;
 import javax.ejb.MessageDriven;
-import javax.jms.Message;
-import javax.jms.MessageListener;
+
 import java.io.*;
 import java.util.*;
 import javax.activation.*;
 import javax.mail.*;
 import javax.mail.internet.*;
+import javax.swing.JOptionPane;
 
 /**
  * Message-Driven Bean implementation class for: MailService
  */
 @MessageDriven(activationConfig = {
 		@ActivationConfigProperty(propertyName = "destinationType", propertyValue = "javax.jms.Queue") })
-public class MailService implements MessageListener {
+public class MailService {
 
 	/**
 	 * Default constructor.
 	 */
-	public MailService() {
+	private MailService() {
 	}
 	// TODO Auto-generated constructor stub
 
@@ -38,10 +38,15 @@ public class MailService implements MessageListener {
 		// Zum Senden
 		props.setProperty("mail.smtp.host", "smtp.gmail.com");
 		props.setProperty("mail.smtp.auth", "true");
-		props.setProperty("mail.smtp.port", "465");
-		props.setProperty("mail.smtp.socketFactory.port", "465");
+		props.setProperty("mail.smtp.port", "587");
+		props.setProperty("mail.smtp.starttls.enable", "true");
+		props.setProperty("mail.smtp.socketFactory.port", "587");
 		props.setProperty("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
 		props.setProperty("mail.smtp.socketFactory.fallback", "false");
+		
+	  
+		
+		
 
 		return Session.getInstance(props, new javax.mail.Authenticator() {
 			@Override
@@ -53,27 +58,21 @@ public class MailService implements MessageListener {
 
 	}
 
-	
-	public static Folder openPop3InboxReadOnly( Session session )
-			  throws MessagingException
-			{
-			  Store store = session.getStore( "pop3" );
-			  store.connect();
+	public static Folder openPop3InboxReadOnly(Session session) throws MessagingException {
+		Store store = session.getStore("pop3");
+		store.connect();
 
-			  Folder folder = store.getFolder( "INBOX" );
-			  folder.open( Folder.READ_ONLY );
+		Folder folder = store.getFolder("INBOX");
+		folder.open(Folder.READ_ONLY);
 
-			  return folder;
-			}
-			public static void closeInbox( Folder folder ) throws MessagingException
-			{
-			  folder.close( false );
-			  folder.getStore().close();
-			}
-	
-	
-	
-	
+		return folder;
+	}
+
+	public static void closeInbox(Folder folder) throws MessagingException {
+		folder.close(false);
+		folder.getStore().close();
+	}
+
 	public static void postMail(Session session, String recipient, String subject, String message)
 			throws MessagingException {
 		Message msg = new MimeMessage(session);
@@ -84,6 +83,60 @@ public class MailService implements MessageListener {
 		msg.setSubject(subject);
 		msg.setContent(message, "text/plain");
 		Transport.send(msg);
+	}
+
+	public static void main(String[] args) throws MessagingException, IOException {
+
+		Session session = MailService.getGMailSession("imailbox300@gmail.com","Mailbox1234");
+		
+		MailService.postMail(session, "jonas.riegger@outlook.de", "Post da", "Uhrzeit und so");
+
+	}
+
+	public static void printAllTextPlainMessages(Folder folder) throws MessagingException, IOException {
+		for (Message m : folder.getMessages()) {
+			System.out.println("\nNachricht:");
+			System.out.println("Von: " + Arrays.toString(m.getFrom()));
+			System.out.println("Betreff: " + m.getSubject());
+			System.out.println("Gesendet am: " + m.getSentDate());
+			System.out.println("Content-Type: " + new ContentType(m.getContentType()));
+
+			if (m.isMimeType("text/plain"))
+				System.out.println(m.getContent());
+		}
+	}
+
+	public static void printAllMultipartMessages(Folder folder) throws MessagingException, IOException {
+		for (Message m : folder.getMessages()) {
+			if (m.isMimeType("text/plain"))
+				System.out.println("Nachricht ist text/plain");
+			else if (m.isMimeType("multipart/*")) {
+				System.out.println("Verarbeite multipart/* Nachricht");
+				Multipart mp = (Multipart) m.getContent();
+
+				// Der erste Part ist immer die Hauptnachricht
+				if (mp.getCount() > 1) {
+					Part part = mp.getBodyPart(0);
+					System.out.println(part.getContent());
+				}
+
+				// Laufe über alle Teile (Anhänge)
+				for (int j = 1; j < mp.getCount(); j++) {
+					Part part = mp.getBodyPart(j);
+					String disp = part.getDisposition();
+					if (disp == null || disp.equalsIgnoreCase(Part.ATTACHMENT)) {
+						MimeBodyPart mimePart = (MimeBodyPart) part;
+
+						// Gib MIME-Typ jedes Anhangs aus; im Fall von XML die
+						// Nachricht
+						System.out.println("MIME-Typ ist " + mimePart.getContentType());
+						if (mimePart.isMimeType("text/xml"))
+							System.out.println(mimePart.getContent());
+					}
+				}
+				System.out.println("Verarbeitung abgeschlossen");
+			}
+		}
 	}
 
 	/**
